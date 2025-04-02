@@ -1,0 +1,308 @@
+/* Simple +/-/* expression language; parser evaluates constant expressions on the fly*/
+
+package lang.parser;
+
+import java_cup.runtime.*;
+import lang.ast.*;
+import lang.ast.command.*;
+import lang.ast.expr.*;
+import lang.ast.types.*;
+import lang.ast.decl.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Arrays;
+import java.lang.*;
+import java_cup.runtime.Symbol;
+
+class LangParser;
+
+
+parser code {:
+    // Connect this parser to a scanner!
+    LangLexer s;
+    public LangParser(LangLexer s){ this.s=s; }
+    // Get the line
+    // Connect this parser to a scanner!
+    boolean error = false;
+
+    private String symToStr(Symbol s){
+            return LangParserSym.terminalNames[s.sym];
+    }
+    private String symToStr(Integer i){
+            return LangParserSym.terminalNames[i];
+    } 
+
+    public void report_error(String message, Object info){
+          Symbol s = (Symbol) info;
+          System.err.println(message + " at input " + cur_token.left + ", " + cur_token.right + ": near " + symToStr(s));
+          System.err.print("Expected symbols: ");
+          int counter = 10;
+          for(Integer i : expected_token_ids()){
+              if(counter <= 0){
+                 System.err.println(symToStr(i) + " " );
+                 counter = 11;
+              }else{
+                 System.err.print(symToStr(i) + " ");
+              }
+              counter --;
+          }
+          System.err.println(" ");
+          System.err.flush();
+    }
+
+    public void report_fatal_error(String message, Object info) throws java.lang.Exception {
+          done_parsing();
+          // report_error(message, info);
+          throw new Exception("Can't recover from previous error(s)");
+    }
+
+    public void unrecovered_syntax_error(Symbol cur_token) throws java.lang.Exception {
+          report_fatal_error("Couldn't repair and continue parse", cur_token);
+    }
+
+    public void syntax_error(Symbol cur_token){
+           error = true;
+           report_error("Syntax error ", cur_token );
+
+    }
+
+    boolean hasError(){ return error; }
+
+:}
+
+init with {:               :};
+scan with {: return s.nextToken(); :};
+
+/* define how to connect to the scanner! */
+
+/*
+   Terminais
+*/
+
+/* Token Definitions */
+
+terminal LBRACE, RBRACE; // { e }
+terminal OPEN_PARENTHESIS, CLOSE_PARENTHESIS; // ( e )
+terminal LBRACKET, RBRACKET; // [ e ]
+terminal COMMA;         // ,
+terminal SEMICOLON;     // ;
+terminal COLON;         // :
+terminal DOUBLE_COLON;  // ::
+terminal DOT;           // .
+terminal ATBR;        // =
+terminal NEW;
+
+// Operadores aritméticos
+terminal PLUS, SUB;   // + e -
+terminal MULT, DIV, MOD; // *, / e %
+
+// Operadores de comparação
+terminal EQ, NEQ;       // == e !=
+terminal LT, GT;        // < e >
+
+// Operadores lógicos
+terminal AND;       // && 
+terminal NOT;       // !
+
+terminal Integer INT_LITERAL;        // our scanner provides numbers as integers
+terminal Float FLOAT_LITERAL;
+terminal Character CHAR_LITERAL;
+terminal Boolean TRUE,FALSE;
+terminal Object NULL;
+terminal String ID;
+terminal String TYID;
+
+// Palavras reservadas
+terminal DATA;
+terminal TYINT;         // Tipo Int
+terminal TYCHAR;        // Tipo Char
+terminal TYBOOL;        // Tipo Bool
+terminal TYFLOAT;       // Tipo Float
+terminal IF;            // if
+terminal ELSE;          // else
+terminal ITERATE;       // iterate
+terminal READ;          // read
+terminal RETURN;        // return
+terminal PRINT;         // print
+
+/* Non terminals */
+non terminal Program prog;
+non terminal Data data;
+non terminal ArrayList<Data> dataList;
+non terminal FunDef func;
+non terminal ArrayList<FunDef> funcList;
+non terminal Decl decl;
+non terminal ArrayList<Decl> declList;
+non terminal LType type;
+non terminal LType btype;
+non terminal Block block;           // Corpo de função (bloco de comandos)
+non terminal StmtBlock stmtBlock;
+non terminal ArrayList<Cmd> cmdList;     // Lista de comandos dentro de um bloco
+non terminal Cmd cmd;  
+non terminal ArrayList<Param> paramList, pList; // Lista de parâmetros
+non terminal ArrayList<LType> optRet, tList; // Lista de tipos
+non terminal LValue lvalue;
+non terminal ArrayList<LValue> lvalueList, optFRets; // Lista de lvalue
+non terminal ArrayList<Exp> expList;     // Lista de expressões
+non terminal LoopCond loopCond;     // Condição de repetição em loops
+non terminal Exp exp;
+non terminal Exp optExp;
+non terminal Exp rexp;
+non terminal Exp aexp;
+non terminal Exp mexp;
+non terminal Exp sexp;
+non terminal Exp pexp;
+
+/*
+  Precencia e associatividade dos operadores.
+  Lista em ordem dos de menor prioridade para os de maior
+  prioridade.
+*/
+
+precedence left AND;
+precedence left EQ, NEQ;
+precedence nonassoc GT, LT;
+precedence left PLUS, SUB;
+precedence left MULT, DIV, MOD;
+precedence right NOT, SUB;
+precedence left LBRACKET, RBRACKET, OPEN_PARENTHESIS, CLOSE_PARENTHESIS;
+precedence left ELSE;
+
+/* The grammar rules */
+prog ::= dataList:d funcList:f {: RESULT = new Program(dleft,dright,d,f); :};
+
+//Lista de Data
+dataList ::= dataList:dl data:d {: dl.add(d); RESULT = dl; :}
+       |  {: RESULT = new ArrayList<Data>(); :};
+
+//Lista de funções
+funcList ::= funcList:fl func:f {: fl.add(f); RESULT = fl; :}
+       |  {: RESULT = new ArrayList<FunDef>(); :};
+
+//Data
+data ::= DATA:dt TYID:ty LBRACE declList:del RBRACE {: RESULT = new Data(dtleft,dtright,ty,del); :};
+
+//Declaração de função
+func ::= ID:i OPEN_PARENTHESIS paramList:params CLOSE_PARENTHESIS optRet:tl block:b {: RESULT = new FunDef(ileft, iright, i, params, tl, b); :}
+       ;
+
+optRet ::= COLON tList:tl {: RESULT = tl; :}
+       | {: RESULT = new ArrayList<LType>(); :};
+
+//Lista de declarações
+declList ::= declList:dl decl:d {: dl.add(d); RESULT = dl; :}
+       |  {: RESULT = new ArrayList<Decl>(); :};
+
+//Declaração de variáveis
+decl ::= ID:i DOUBLE_COLON type:ty SEMICOLON {: RESULT = new Decl(ileft,iright,i,ty); :};
+
+//Lista de Tipos
+
+tList ::= tList:tl COMMA type:t {: tl.add(t); RESULT = tl; :}
+       |  type:t {: ArrayList<LType> l = new ArrayList<LType>(); l.add(t); RESULT = l; :};
+
+//Type
+type ::= type:ty LBRACKET RBRACKET {: RESULT = new TyArray(tyleft,tyright,ty); :}
+       | btype:b {: RESULT = b; :};
+
+//Valores dos tipos
+btype ::= TYINT:it {: RESULT = new TyInt(itleft, itright); :}
+       |  TYCHAR:ct {: RESULT = new TyChar(ctleft, ctright); :}
+       |  TYBOOL:bt {: RESULT = new TyBool(btleft, btright); :}
+       |  TYFLOAT:ft {: RESULT = new TyFloat(ftleft, ftright); :}
+       |  TYID:ty {: RESULT = new TyId(tyleft, tyright, ty); :}
+       ;
+
+//Block
+block ::= LBRACE cmdList:cl RBRACE {: RESULT = new Block(clleft,clright,cl); :};
+
+//StmtBlock
+stmtBlock ::= block:bk {: RESULT = new StmtBlock(bkleft,bkright,bk); :}
+       | cmd:c {: RESULT = new StmtBlock(cleft,cright,c); :};
+
+//Lista de Comandos
+cmdList ::= cmdList:cl cmd:c {: cl.add(c); RESULT = cl; :}
+       | {: RESULT = new ArrayList<Cmd>(); :};
+
+//Comandos
+cmd ::=  IF:i OPEN_PARENTHESIS exp:e CLOSE_PARENTHESIS stmtBlock:sb {: RESULT = new If(ileft,iright, e, sb, null); :}
+       | IF:i OPEN_PARENTHESIS exp:e CLOSE_PARENTHESIS stmtBlock:sbt ELSE stmtBlock:sbf  {: RESULT = new If(ileft,iright, e, sbt, sbf); :}
+       | ITERATE:it OPEN_PARENTHESIS loopCond:lc CLOSE_PARENTHESIS stmtBlock:stmt {: RESULT = new Iterate(itleft,itright, lc, stmt); :}
+       | READ:r lvalue:lv SEMICOLON {: RESULT = new Read(rleft,rright, lv); :}
+       | PRINT:p exp:e SEMICOLON {: RESULT = new Print(pleft,pright, e); :}
+       | RETURN:r expList:e SEMICOLON {: RESULT = new Return(rleft, rright, e); :}
+       | lvalue:lv ATBR exp:e SEMICOLON {: RESULT = new Assign(lvleft,lvright,lv,e); :}
+       | ID:i OPEN_PARENTHESIS expList:el CLOSE_PARENTHESIS optFRets:ll SEMICOLON {: RESULT = new FunCall(ileft, iright, i, el, ll); :}
+       ;
+
+optFRets ::= LT lvalueList:ll GT {: RESULT = ll; :}
+       | {: RESULT = new ArrayList<LValue>(); :} 
+       ;
+
+
+//Lista de LValues
+lvalueList ::= lvalueList:ll COMMA lvalue:lv {: ll.add(lv); RESULT = ll; :}
+       | lvalue:lv {: ArrayList<LValue> l = new ArrayList<>(); l.add(lv); RESULT = l; :};
+
+//LValue
+lvalue ::= ID:id {: RESULT = new LValue(idleft, idright, id); :}
+         | lvalue:lv LBRACKET exp:e RBRACKET {: RESULT = new ArrayAccess(lvleft, lvright, lv, e); :}
+         | lvalue:lv DOT ID:id {: RESULT = new FieldAccess(lvleft, lvright, lv, id); :};
+
+//Lista de Parametros
+paramList ::= pList:pl  {: RESULT = pl; :}
+           | {: RESULT = new ArrayList<Param>(); :};
+
+pList ::= pList:pl COMMA ID:i DOUBLE_COLON type:t {: pl.add(new Param(ileft, iright, i, t)); RESULT = pl; :}
+           | ID:i DOUBLE_COLON type:t {: ArrayList<Param> p = new ArrayList<>(); 
+                                         p.add(new Param(ileft, iright, i, t)); 
+                                         RESULT = p; :};
+
+//crias explist que nao recebe nada, que permite lista vazia
+
+expList ::= expList:el COMMA exp:e {: el.add(e); RESULT = el; :}
+          | exp:e {: ArrayList<Exp> l = new ArrayList<>(); l.add(e); RESULT = l; :};
+
+//Condição de loop
+loopCond ::= ID:i COLON exp:e {: RESULT = new LoopCond(i, e); :}
+           | exp:e {: RESULT = new LoopCond( null,e); :};
+
+//Expressões
+exp  ::= exp:e1 AND:an exp:e2 {: RESULT = new And (anleft,anright,e1,e2); :}
+       | rexp:r {: RESULT = r; :};
+
+rexp ::=  aexp:e1 GT:gt aexp:e2 {: RESULT = new Greater(gtleft,gtright,e1,e2); :}
+       |  aexp:e1 LT:lt aexp:e2 {: RESULT = new Less(ltleft,ltright,e1,e2); :}
+       |  rexp:e1 EQ:eq aexp:e2 {: RESULT = new Equal(eqleft,eqright,e1,e2); :}
+       |  rexp:e1 NEQ:neq aexp:e2 {: RESULT = new Different(neqleft,neqright,e1,e2); :}
+       |  aexp:a {: RESULT = a; :};
+
+aexp  ::= aexp:e1 PLUS:p mexp:e2 {: RESULT = new Plus(pleft,pright,e1,e2); :}
+       |  aexp:e1 SUB:u mexp:e2 {: RESULT = new Sub(uleft,uright,e1,e2); :}
+       |  mexp:m {: RESULT = m; :};
+
+mexp ::=  mexp:e1 MULT:s sexp:e2 {: RESULT = new Times(sleft,sright,e1,e2); :}
+       |  mexp:e1 DIV:d sexp:e2 {: RESULT = new Div(dleft,dright,e1,e2); :}
+       |  mexp:e1 MOD:m sexp:e2 {: RESULT = new Mod(mleft,mright,e1,e2); :}
+       |  sexp:s {: RESULT = s; :};
+
+sexp ::=  NOT:no sexp:e1 {: RESULT = new Not(noleft,noright,e1); :}
+       |  SUB:u sexp:e1 {: RESULT = new UnaryMinus(uleft,uright,e1); :}
+       |  TRUE:t {: RESULT = new Bool(tleft,tright,true); :}
+       |  FALSE:f {: RESULT = new Bool(fleft,fright,false); :}
+       |  NULL:n {: RESULT = new Null(nleft,nright,null); :}
+       |  INT_LITERAL:n {: RESULT = new Int(nleft,nright,n); :}
+       |  FLOAT_LITERAL:n {: RESULT = new FloatLit(nleft,nright,n); :}
+       |  CHAR_LITERAL:c {: RESULT = new Char(cleft,cright,c); :}
+       |  pexp:p {: RESULT = p; :};
+
+pexp ::=  OPEN_PARENTHESIS exp:e CLOSE_PARENTHESIS {: RESULT = e; :}
+       |  ID:i OPEN_PARENTHESIS expList:el CLOSE_PARENTHESIS LBRACKET exp:e RBRACKET {: RESULT = new FCall(ileft, iright, i, el, e); :}  
+       |  lvalue:lv {: RESULT = lv; :}
+       |  NEW type:t optExp:e {: RESULT = new Instanciate(tleft,tright,t,e); :}
+       ;
+
+optExp ::= LBRACKET exp:e RBRACKET {: RESULT = e; :}
+       |  {: RESULT = null; :} 
+       ;
+       

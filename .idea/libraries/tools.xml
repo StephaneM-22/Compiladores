@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="tools">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/langFramework/tools/jflex.jar!/" />
+      <root url="jar://$PROJECT_DIR$/langFramework/tools/java-cup-11b.jar!/" />
+      <root url="jar://$PROJECT_DIR$/langFramework/tools/java-cup-11b-runtime.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

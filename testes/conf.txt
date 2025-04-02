@@ -1,0 +1,2 @@
+java -cp ..:../tools/java-cup-11b-runtime.jar lang/Lang -syn
+java -cp ..:../tools/java-cup-11b-runtime.jar lang/Lang -i
